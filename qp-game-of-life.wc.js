@@ -1,4 +1,4 @@
-import GameOfLife from "./game-of-life.js";
+import GameOfLife from "./qp-game-of-life.class.js";
 
 const DEFAULT_CELL_SIZE = 20;
 const DEFAULT_INTERVAL = 500;
@@ -17,6 +17,7 @@ const styles = `
     width: calc(var(--width) + 2 * var(--border-width));
     height: calc(var(--height) + 2 * var(--border-width));
     box-sizing: content-box;
+    margin: 0 auto;
   }
 
   .qp-cell {
