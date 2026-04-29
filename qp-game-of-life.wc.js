@@ -4,12 +4,15 @@ const DEFAULT_CELL_SIZE = 20;
 const DEFAULT_INTERVAL = 500;
 
 const styles = `
-  :host { display: block; }
+  :host {
+    --border-width: 1px;
+    display: block;
+    position: relative;
+  }
 
   .qp-host { width: 100%; height: 100%; }
 
   .qp-board {
-    --border-width: 1px;
     display: grid;
     grid-template-columns: repeat(var(--size-x), var(--cell-size));
     grid-template-rows: repeat(var(--size-y), var(--cell-size));
@@ -30,6 +33,58 @@ const styles = `
   .qp-cell.is-alive {
     background-color: #000;
   }
+
+  .qp-overlay {
+    position: absolute;
+    top: var(--border-width);
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(var(--width) + 2 * var(--border-width));
+    height: calc(var(--height) + 2 * var(--border-width));
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(2px);
+    z-index: 10;
+  }
+
+  .qp-overlay.is-visible {
+    display: flex;
+  }
+
+  .qp-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem 2rem;
+    background: #fff;
+    border: 1px solid #000;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .qp-overlay-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .qp-overlay-button {
+    padding: 0.5rem 1.25rem;
+    border: 1px solid #000;
+    border-radius: 4px;
+    background: #000;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .qp-overlay-button:hover {
+    background: #333;
+  }
 `;
 
 class GameOfLifeElement extends HTMLElement {
@@ -49,7 +104,26 @@ class GameOfLifeElement extends HTMLElement {
     const host = document.createElement("div");
     host.className = "qp-host";
 
-    this.shadowRoot.append(style, host);
+    const overlay = document.createElement("div");
+    overlay.className = "qp-overlay";
+    overlay.innerHTML = `
+      <div class="qp-overlay-content">
+        <p class="qp-overlay-title">Game Over</p>
+        <button type="button" class="qp-overlay-button">Restart</button>
+      </div>
+    `;
+
+    this.overlay = overlay;
+    this.shadowRoot.append(style, host, overlay);
+
+    overlay.querySelector(".qp-overlay-button").addEventListener("click", () => {
+      this.overlay.classList.remove("is-visible");
+      this.game?.start();
+    });
+
+    host.addEventListener("qp-game-of-life:gameover", () => {
+      this.overlay.classList.add("is-visible");
+    });
 
     if (!this.hasAttribute("cell-size")) this.setAttribute("cell-size", DEFAULT_CELL_SIZE);
     if (!this.hasAttribute("interval")) this.setAttribute("interval", DEFAULT_INTERVAL);

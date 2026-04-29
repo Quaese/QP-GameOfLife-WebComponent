@@ -1,5 +1,6 @@
 class GameOfLife {
   static DELAY = 200;
+  static MAX_HISTORY = 20;
 
   constructor(options) {
     if (!options.game) return;
@@ -12,6 +13,7 @@ class GameOfLife {
 
     this.state = [];
     this.gameSize = { x: 0, y: 0 };
+    this.history = [];
 
     this.interval = options.interval || 500;
     this.timer = null;
@@ -109,15 +111,26 @@ class GameOfLife {
     this.state = Array.from({ length: this.gameSize.y }, () =>
       new Array(this.gameSize.x).fill(false),
     );
+    this.history = [];
   }
 
   randomize() {
     this.state = this.state.map((row) => row.map(() => Math.random() > 0.5));
+    this.history = [];
   }
 
   render() {
+    // Lift sizing vars to the shadow host (or game element when standalone) so siblings can consume them.
+    const target = this.game.getRootNode().host || this.game;
+
+    target.style.setProperty("--size-x", this.gameSize.x);
+    target.style.setProperty("--size-y", this.gameSize.y);
+    target.style.setProperty("--cell-size", `${this.cellSize}px`);
+    target.style.setProperty("--width", `${this.boardWidth}px`);
+    target.style.setProperty("--height", `${this.boardHeight}px`);
+
     const boardTmpl = `
-      <div class="qp-board" style="--size-x: ${this.gameSize.x}; --size-y: ${this.gameSize.y}; --cell-size: ${this.cellSize}px; --width: ${this.boardWidth}px; --height: ${this.boardHeight}px;">
+      <div class="qp-board">
     ${this.state
       .map((row, y) => {
         return row
@@ -143,25 +156,38 @@ class GameOfLife {
       }),
     );
 
-    let changed = false;
-
-    // Apply diff to DOM and detect still life (no cell changed → game over).
+    // Apply diff to DOM.
     for (let y = 0; y < next.length; y++) {
       for (let x = 0; x < next[y].length; x++) {
         if (next[y][x] !== this.state[y][x]) {
           this.updateCell(x, y, next[y][x]);
-          changed = true;
         }
       }
     }
 
     this.state = next;
 
-    if (!changed) {
-      console.log("Game Over");
-      clearInterval(this.timer);
-      this.timer = null;
+    // Detect cycle (still-life = period 1, oscillators = period 2+).
+    const hash = next.map((row) => row.map((cell) => (cell ? 1 : 0)).join("")).join("|");
+
+    if (this.history.includes(hash)) {
+      this.dispatchGameOver();
+      return;
     }
+
+    this.history.push(hash);
+
+    if (this.history.length > GameOfLife.MAX_HISTORY) this.history.shift();
+  }
+
+  dispatchGameOver() {
+    clearInterval(this.timer);
+    this.timer = null;
+
+    this.game.dispatchEvent(new CustomEvent("qp-game-of-life:gameover", {
+      bubbles: true,
+      composed: true,
+    }));
   }
 
   updateCell(x, y, isAlive) {
