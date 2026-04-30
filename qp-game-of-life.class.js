@@ -184,10 +184,12 @@ class GameOfLife {
     clearInterval(this.timer);
     this.timer = null;
 
-    this.game.dispatchEvent(new CustomEvent("qp-game-of-life:gameover", {
-      bubbles: true,
-      composed: true,
-    }));
+    this.game.dispatchEvent(
+      new CustomEvent("qp-game-of-life:gameover", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   updateCell(x, y, isAlive) {

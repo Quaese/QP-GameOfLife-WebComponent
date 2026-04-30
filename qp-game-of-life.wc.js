@@ -117,12 +117,12 @@ class GameOfLifeElement extends HTMLElement {
     this.shadowRoot.append(style, host, overlay);
 
     overlay.querySelector(".qp-overlay-button").addEventListener("click", () => {
-      this.overlay.classList.remove("is-visible");
+      this.hideOverlay();
       this.game?.start();
     });
 
     host.addEventListener("qp-game-of-life:gameover", () => {
-      this.overlay.classList.add("is-visible");
+      this.showOverlay();
     });
 
     if (!this.hasAttribute("cell-size")) this.setAttribute("cell-size", DEFAULT_CELL_SIZE);
@@ -139,7 +139,15 @@ class GameOfLifeElement extends HTMLElement {
     this.game?.pause();
   }
 
+  hideOverlay() {
+    this.overlay.classList.remove("is-visible");
+  }
+  showOverlay() {
+    this.overlay.classList.add("is-visible");
+  }
+
   start() {
+    this.hideOverlay();
     this.game?.start();
   }
 
@@ -156,7 +164,9 @@ class GameOfLifeElement extends HTMLElement {
   }
 
   reset() {
+    this.game?.pause();
     this.game?.reset();
+    this.game?.syncCells();
   }
 
   randomize() {
