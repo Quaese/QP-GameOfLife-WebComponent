@@ -1,8 +1,12 @@
 import GameOfLife from "./qp-game-of-life.class.js";
 
+/** Default cell side length in pixels when the `cell-size` attribute is absent. */
 const DEFAULT_CELL_SIZE = 20;
+
+/** Default tick interval in milliseconds when the `interval` attribute is absent. */
 const DEFAULT_INTERVAL = 500;
 
+/** Shadow DOM stylesheet for the board, cells, and game-over overlay. */
 const styles = `
   :host {
     --border-width: 1px;
@@ -71,6 +75,11 @@ const styles = `
     margin: 0;
   }
 
+  .qp-overlay-actions {
+    display: flex;
+    gap: 0.75rem;
+  }
+
   .qp-overlay-button {
     padding: 0.5rem 1.25rem;
     border: 1px solid #000;
@@ -85,16 +94,49 @@ const styles = `
   .qp-overlay-button:hover {
     background: #333;
   }
+
+  .qp-overlay-button--secondary {
+    background: #fff;
+    color: #000;
+  }
+
+  .qp-overlay-button--secondary:hover {
+    background: #efefef;
+  }
 `;
 
+/**
+ * `<qp-game-of-life>` Custom Element. Wraps {@link GameOfLife} in a shadow DOM
+ * and renders a game-over overlay with Restart/Close actions.
+ *
+ * The element forwards lifecycle commands (`start`, `pause`, `continue`,
+ * `stop`, `reset`, `randomize`) to the underlying simulation and exposes the
+ * current `gameState` as a read-only property.
+ *
+ * @element qp-game-of-life
+ *
+ * @attr {number} [cell-size=20] - Cell side length in pixels.
+ * @attr {number} [interval=500] - Tick interval in milliseconds.
+ *
+ * @fires qp-game-of-life:statechange - Bubbles out of the shadow DOM on every
+ *   lifecycle transition. `event.detail` is `{ previousState, currentState }`.
+ *   See {@link GameOfLife.GameState} for possible values.
+ *
+ * @example
+ *   <qp-game-of-life style="width: 100%; height: 30vh;" cell-size="15" interval="100"></qp-game-of-life>
+ */
 class GameOfLifeElement extends HTMLElement {
   constructor() {
     super();
 
-    // Zugriff von außen auf das Game-Objekt
     this.attachShadow({ mode: "open" });
   }
 
+  /**
+   * Builds the shadow DOM (style, board host, overlay), wires up overlay
+   * actions and the gameover listener, and instantiates the simulation.
+   * Idempotent — re-attaching the element does not recreate the game.
+   */
   connectedCallback() {
     if (this.game) return;
 
@@ -109,20 +151,29 @@ class GameOfLifeElement extends HTMLElement {
     overlay.innerHTML = `
       <div class="qp-overlay-content">
         <p class="qp-overlay-title">Game Over</p>
-        <button type="button" class="qp-overlay-button">Restart</button>
+        <div class="qp-overlay-actions">
+          <button type="button" class="qp-overlay-button" data-action="restart">Restart</button>
+          <button type="button" class="qp-overlay-button qp-overlay-button--secondary" data-action="close">Close</button>
+        </div>
       </div>
     `;
 
     this.overlay = overlay;
     this.shadowRoot.append(style, host, overlay);
 
-    overlay.querySelector(".qp-overlay-button").addEventListener("click", () => {
+    overlay.querySelector('[data-action="restart"]').addEventListener("click", () => {
       this.hideOverlay();
       this.game?.start();
     });
 
-    host.addEventListener("qp-game-of-life:gameover", () => {
-      this.showOverlay();
+    overlay.querySelector('[data-action="close"]').addEventListener("click", () => {
+      this.hideOverlay();
+    });
+
+    host.addEventListener("qp-game-of-life:statechange", (event) => {
+      if (event.detail.currentState === "gameover") {
+        this.showOverlay();
+      }
     });
 
     if (!this.hasAttribute("cell-size")) this.setAttribute("cell-size", DEFAULT_CELL_SIZE);
@@ -135,42 +186,58 @@ class GameOfLifeElement extends HTMLElement {
     });
   }
 
+  /** Tears down the simulation (timer + global resize listener). */
   disconnectedCallback() {
-    this.game?.pause();
+    this.game?.destroy();
   }
 
+  /** Hides the game-over overlay. */
   hideOverlay() {
     this.overlay.classList.remove("is-visible");
   }
+
+  /** Shows the game-over overlay. */
   showOverlay() {
     this.overlay.classList.add("is-visible");
   }
 
+  /** Hides the overlay (in case it was visible) and starts a fresh game. */
   start() {
     this.hideOverlay();
     this.game?.start();
   }
 
+  /** Halts the simulation; the current pattern stays on screen. */
   stop() {
     this.game?.stop();
   }
 
+  /** Pauses the simulation. */
   pause() {
     this.game?.pause();
   }
 
+  /** Resumes a paused simulation. No-op outside of `PAUSED`. */
   continue() {
     this.game?.continue();
   }
 
+  /** Halts the simulation and clears the board. */
   reset() {
-    this.game?.pause();
     this.game?.reset();
-    this.game?.syncCells();
   }
 
+  /** Replaces the current state with a uniformly random pattern. */
   randomize() {
     this.game?.randomize();
+  }
+
+  /**
+   * Current lifecycle state. One of {@link GameOfLife.GameState}.
+   * @returns {string | undefined}
+   */
+  get gameState() {
+    return this.game?.gameState;
   }
 }
 

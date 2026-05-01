@@ -1,7 +1,44 @@
+/**
+ * Conway's Game of Life simulation.
+ *
+ * Renders a configurable cell grid into a host element and runs the cellular
+ * automaton on a fixed interval. Cycle detection covers still-life (period 1)
+ * and oscillators up to {@link GameOfLife.MAX_HISTORY} steps; gliders/spaceships
+ * are not detected since their hash translates over time.
+ *
+ * @fires qp-game-of-life:statechange - When `gameState` transitions.
+ *   `event.detail` is `{ previousState, currentState }`. The event bubbles and
+ *   crosses shadow DOM boundaries (`composed: true`).
+ */
 class GameOfLife {
+  /** Debounce delay (ms) for the window resize handler. */
   static DELAY = 200;
+
+  /** Maximum number of past states retained for cycle detection. */
   static MAX_HISTORY = 20;
 
+  /**
+   * Lifecycle states emitted via the `qp-game-of-life:statechange` event.
+   * @readonly
+   * @enum {string}
+   */
+  static GameState = Object.freeze({
+    INIT: "init",
+    STARTED: "started",
+    PAUSED: "paused",
+    STOPPED: "stopped",
+    GAMEOVER: "gameover",
+  });
+
+  /** @type {() => void} Bound debounced resize handler, cached for removal. */
+  #hResize;
+
+  /**
+   * @param {object} options
+   * @param {HTMLElement} options.game - Host element that receives the cell grid.
+   * @param {number} [options.cellSize=20] - Cell side length in pixels.
+   * @param {number} [options.interval=500] - Tick interval in milliseconds.
+   */
   constructor(options) {
     if (!options.game) return;
 
@@ -17,24 +54,58 @@ class GameOfLife {
 
     this.interval = options.interval || 500;
     this.timer = null;
+    this.gameState = GameOfLife.GameState.INIT;
 
-    this.hResize = this.debounce(() => this.handleResize(), GameOfLife.DELAY);
+    this.#hResize = this.#debounce(() => this.#handleResize(), GameOfLife.DELAY);
 
-    this.init();
+    this.#init();
   }
 
-  init() {
-    window.addEventListener("resize", this.hResize);
+  /**
+   * Updates `gameState` and emits `qp-game-of-life:statechange`. No-op when
+   * the requested state equals the current one (avoids redundant events).
+   * @param {string} newState - One of {@link GameOfLife.GameState}.
+   */
+  #setGameState(newState) {
+    if (this.gameState === newState) return;
 
-    this.setGameSize();
-    this.randomize();
-    this.render();
-    this.setNodes();
+    const previousState = this.gameState;
+    this.gameState = newState;
+
+    this.game.dispatchEvent(
+      new CustomEvent("qp-game-of-life:statechange", {
+        bubbles: true,
+        composed: true,
+        detail: { previousState, currentState: newState },
+      }),
+    );
+  }
+
+  /** Bootstraps the grid, registers the resize listener, and starts the simulation. */
+  #init() {
+    window.addEventListener("resize", this.#hResize);
+
+    this.#setGameSize();
+    this.#render();
+    this.#setNodes();
 
     this.start();
   }
 
-  debounce(fn, delay) {
+  /** Pauses the simulation and removes the global resize listener. */
+  destroy() {
+    this.pause();
+    window.removeEventListener("resize", this.#hResize);
+  }
+
+  /**
+   * Returns a debounced version of `fn`. Calls within `delay` ms reset the timer.
+   * @template {(...args: unknown[]) => void} F
+   * @param {F} fn
+   * @param {number} delay - Debounce window in milliseconds.
+   * @returns {() => void}
+   */
+  #debounce(fn, delay) {
     let timer;
 
     return () => {
@@ -44,83 +115,136 @@ class GameOfLife {
     };
   }
 
-  handleResize() {
+  /**
+   * Recomputes grid dimensions after a viewport change and re-renders.
+   * Preserves the running/paused state — if the simulation was running, it is
+   * resumed after the rebuild.
+   */
+  #handleResize() {
     this.gameWidth = this.game.offsetWidth;
     this.gameHeight = this.game.offsetHeight;
 
     const wasRunning = this.timer !== null;
 
     this.pause();
-    this.setGameSize();
-    this.render();
-    this.setNodes();
+    this.#setGameSize();
+    this.#render();
+    this.#setNodes();
 
     if (wasRunning) this.start();
   }
 
+  /**
+   * Starts a fresh game with a randomized state. If a timer is already running,
+   * it is replaced. Transitions to `STARTED`.
+   */
   start() {
     if (this.timer) clearInterval(this.timer);
 
     this.randomize();
-    this.syncCells();
+    this.#syncCells();
 
     this.timer = setInterval(() => {
-      this.update();
+      this.#update();
     }, this.interval);
+
+    this.#setGameState(GameOfLife.GameState.STARTED);
   }
 
+  /** Pauses the simulation. Transitions to `PAUSED`. */
   pause() {
     clearInterval(this.timer);
     this.timer = null;
+
+    this.#setGameState(GameOfLife.GameState.PAUSED);
   }
 
+  /**
+   * Resumes a paused simulation without re-randomizing. No-op when the current
+   * state is not `PAUSED` (prevents accidental restarts from `STOPPED`/`GAMEOVER`).
+   */
   continue() {
-    if (this.timer) return;
+    if (this.gameState !== GameOfLife.GameState.PAUSED) return;
 
     this.timer = setInterval(() => {
-      this.update();
+      this.#update();
     }, this.interval);
+
+    this.#setGameState(GameOfLife.GameState.STARTED);
   }
 
+  /**
+   * Halts the simulation but keeps the current pattern visible. Transitions to
+   * `STOPPED`. Use {@link reset} to additionally clear the board.
+   */
   stop() {
+    this.#setGameState(GameOfLife.GameState.STOPPED);
+
     clearInterval(this.timer);
     this.timer = null;
-    this.reset();
-    this.syncCells();
   }
 
-  syncCells() {
+  /** Mirrors the in-memory `state` array onto the cached cell DOM nodes. */
+  #syncCells() {
     for (let y = 0; y < this.state.length; y++) {
       for (let x = 0; x < this.state[y].length; x++) {
-        this.updateCell(x, y, this.state[y][x]);
+        this.#updateCell(x, y, this.state[y][x]);
       }
     }
   }
 
-  setGameSize() {
+  /**
+   * Recalculates grid dimensions from the host element's current size.
+   * Cell count rounds down to fit; surplus pixels remain as empty space.
+   */
+  #setGameSize() {
     this.gameSize.x = Math.floor(this.gameWidth / this.cellSize);
     this.gameSize.y = Math.floor(this.gameHeight / this.cellSize);
 
     this.boardWidth = this.gameSize.x * this.cellSize;
     this.boardHeight = this.gameSize.y * this.cellSize;
 
-    this.reset();
+    this.#clearState();
   }
 
-  reset() {
+  /** Resets the state matrix to an empty board and clears the cycle history. */
+  #clearState() {
     this.state = Array.from({ length: this.gameSize.y }, () =>
       new Array(this.gameSize.x).fill(false),
     );
     this.history = [];
   }
 
+  /**
+   * Halts the simulation, clears the board, and syncs the DOM. Transitions to
+   * `STOPPED`. Use {@link stop} to halt without clearing the pattern.
+   */
+  reset() {
+    this.#setGameState(GameOfLife.GameState.STOPPED);
+
+    clearInterval(this.timer);
+    this.timer = null;
+    this.#clearState();
+    this.#syncCells();
+  }
+
+  /**
+   * Replaces the current state with a uniformly random alive/dead pattern
+   * (~50 % live cells). Clears the cycle history so the new pattern is not
+   * matched against the previous game.
+   */
   randomize() {
     this.state = this.state.map((row) => row.map(() => Math.random() > 0.5));
     this.history = [];
   }
 
-  render() {
-    // Lift sizing vars to the shadow host (or game element when standalone) so siblings can consume them.
+  /**
+   * Builds the board markup and replaces the host's contents. Sizing CSS
+   * variables (`--size-x`, `--size-y`, `--cell-size`, `--width`, `--height`)
+   * are set on the shadow host (or directly on `this.game` in standalone use)
+   * so siblings of the board (e.g. an overlay) can consume them.
+   */
+  #render() {
     const target = this.game.getRootNode().host || this.game;
 
     target.style.setProperty("--size-x", this.gameSize.x);
@@ -146,10 +270,17 @@ class GameOfLife {
     this.game.innerHTML = boardTmpl;
   }
 
-  update() {
+  /**
+   * Advances the simulation by one tick:
+   * 1. Computes the next state per Conway's rules.
+   * 2. Applies a minimal diff to the DOM.
+   * 3. Hashes the new state and compares against the history to detect cycles.
+   * On cycle detection (still-life or oscillator), ends the game.
+   */
+  #update() {
     const next = this.state.map((row, y) =>
       row.map((isAlive, x) => {
-        const neighbors = this.getNeighbors(x, y);
+        const neighbors = this.#getNeighbors(x, y);
 
         // Conway's rules: live cell survives with 2-3 neighbors; dead cell becomes alive with exactly 3 living neighbors.
         return isAlive ? neighbors === 2 || neighbors === 3 : neighbors === 3;
@@ -160,7 +291,7 @@ class GameOfLife {
     for (let y = 0; y < next.length; y++) {
       for (let x = 0; x < next[y].length; x++) {
         if (next[y][x] !== this.state[y][x]) {
-          this.updateCell(x, y, next[y][x]);
+          this.#updateCell(x, y, next[y][x]);
         }
       }
     }
@@ -171,7 +302,7 @@ class GameOfLife {
     const hash = next.map((row) => row.map((cell) => (cell ? 1 : 0)).join("")).join("|");
 
     if (this.history.includes(hash)) {
-      this.dispatchGameOver();
+      this.#dispatchGameOver();
       return;
     }
 
@@ -180,23 +311,32 @@ class GameOfLife {
     if (this.history.length > GameOfLife.MAX_HISTORY) this.history.shift();
   }
 
-  dispatchGameOver() {
+  /** Stops the timer and transitions to `GAMEOVER`. */
+  #dispatchGameOver() {
     clearInterval(this.timer);
     this.timer = null;
 
-    this.game.dispatchEvent(
-      new CustomEvent("qp-game-of-life:gameover", {
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.#setGameState(GameOfLife.GameState.GAMEOVER);
   }
 
-  updateCell(x, y, isAlive) {
+  /**
+   * Toggles the `is-alive` class on a single cell DOM node.
+   * @param {number} x - Column index.
+   * @param {number} y - Row index.
+   * @param {boolean} isAlive
+   */
+  #updateCell(x, y, isAlive) {
     this.cells[y][x].classList.toggle("is-alive", isAlive);
   }
 
-  getNeighbors(x, y) {
+  /**
+   * Counts living neighbors (Moore neighborhood, 8 cells) of the given position
+   * in the current state. Out-of-bounds positions are skipped.
+   * @param {number} x
+   * @param {number} y
+   * @returns {number}
+   */
+  #getNeighbors(x, y) {
     const number = [
       [x - 1, y - 1],
       [x, y - 1],
@@ -206,20 +346,28 @@ class GameOfLife {
       [x - 1, y + 1],
       [x, y + 1],
       [x + 1, y + 1],
-    ].filter(([p, q]) => this.isValidPosition(p, q) && this.state[q][p]).length;
+    ].filter(([nx, ny]) => this.#isValidPosition(nx, ny) && this.state[ny][nx]).length;
 
     return number;
   }
 
-  isValidPosition(p, q) {
-    return p >= 0 && p < this.gameSize.x && q >= 0 && q < this.gameSize.y;
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @returns {boolean} True if (x, y) lies inside the current grid.
+   */
+  #isValidPosition(x, y) {
+    return x >= 0 && x < this.gameSize.x && y >= 0 && y < this.gameSize.y;
   }
 
-  setNodes() {
+  /** Caches DOM references for every cell after a render so `#updateCell` can hit nodes directly. */
+  #setNodes() {
     this.board = this.game.querySelector(".qp-board");
 
-    this.cells = this.state.map((row, y) =>
-      row.map((isAlive, x) => this.board.querySelector(`#qp-cell-${x}-${y}`)),
+    this.cells = Array.from({ length: this.gameSize.y }, (_, y) =>
+      Array.from({ length: this.gameSize.x }, (_, x) =>
+        this.board.querySelector(`#qp-cell-${x}-${y}`),
+      ),
     );
   }
 }
