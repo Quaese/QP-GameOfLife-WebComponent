@@ -1,4 +1,5 @@
 import GameOfLife from "./qp-game-of-life.class.js";
+import WORDS from "./words.js";
 
 /** Default cell side length in pixels when the `cell-size` attribute is absent. */
 const DEFAULT_CELL_SIZE = 20;
@@ -230,6 +231,30 @@ class GameOfLifeElement extends HTMLElement {
   /** Replaces the current state with a uniformly random pattern. */
   randomize() {
     this.game?.randomize();
+  }
+
+  /**
+   * Paints `text` onto the board using a 3×5 bitmap font, centered.
+   * Falls back to {@link randomize} when the text does not fit.
+   * @param {string} [text="qp-game-of-life"]
+   *
+   * @example
+   *   const game = document.querySelector("qp-game-of-life");
+   *   game.showText("hello world");
+   *   game.showText("Conway 2026");
+   *   game.showText("123-456");
+   */
+  showText(text) {
+    this.game?.showText(text);
+  }
+
+  /**
+   * Picks a random word from the imported {@link WORDS} pool and paints it
+   * onto the board via {@link showText}.
+   */
+  randomText() {
+    const word = WORDS[Math.floor(Math.random() * WORDS.length)];
+    this.showText(word);
   }
 
   /**

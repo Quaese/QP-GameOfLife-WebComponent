@@ -1,3 +1,5 @@
+import FONT_3X5, { FONT_3X5_CHAR_WIDTH, FONT_3X5_CHAR_HEIGHT } from "./font_3x5.js";
+
 /**
  * Conway's Game of Life simulation.
  *
@@ -30,8 +32,16 @@ class GameOfLife {
     GAMEOVER: "gameover",
   });
 
+
   /** @type {() => void} Bound debounced resize handler, cached for removal. */
   #hResize;
+
+  /**
+   * @type {string | null} Last text painted via {@link showText}. Acts as the
+   * preferred seed for the next {@link start}. Cleared by {@link randomize}
+   * and {@link reset}.
+   */
+  #text = null;
 
   /**
    * @param {object} options
@@ -81,7 +91,12 @@ class GameOfLife {
     );
   }
 
-  /** Bootstraps the grid, registers the resize listener, and starts the simulation. */
+  /**
+   * Bootstraps the grid, registers the resize listener, and paints the
+   * `qp-game-of-life` logo as the resting state. The simulation does not
+   * auto-start — the user must trigger {@link start}, {@link continue}, or
+   * another lifecycle method.
+   */
   #init() {
     window.addEventListener("resize", this.#hResize);
 
@@ -89,7 +104,7 @@ class GameOfLife {
     this.#render();
     this.#setNodes();
 
-    this.start();
+    this.showText();
   }
 
   /** Pauses the simulation and removes the global resize listener. */
@@ -135,14 +150,25 @@ class GameOfLife {
   }
 
   /**
-   * Starts a fresh game with a randomized state. If a timer is already running,
-   * it is replaced. Transitions to `STARTED`.
+   * Starts the simulation loop and transitions to `STARTED`. The seed pattern
+   * is determined by the stored `#text`:
+   * - When a text is set (via {@link showText}, including the logo painted by
+   *   `#init`), it is repainted and used as the seed — it then dissolves into
+   *   Conway's chaos as the game ticks. The text remains stored, so a later
+   *   `start` repaints it again.
+   * - Otherwise the board is re-randomized for a fresh game.
+   *
+   * Replaces an existing timer.
    */
   start() {
     if (this.timer) clearInterval(this.timer);
 
-    this.randomize();
-    this.#syncCells();
+    if (this.#text !== null) {
+      this.showText(this.#text);
+    } else {
+      this.randomize();
+      this.#syncCells();
+    }
 
     this.timer = setInterval(() => {
       this.#update();
@@ -216,8 +242,9 @@ class GameOfLife {
   }
 
   /**
-   * Halts the simulation, clears the board, and syncs the DOM. Transitions to
-   * `STOPPED`. Use {@link stop} to halt without clearing the pattern.
+   * Halts the simulation, clears the board and the stored text seed, and syncs
+   * the DOM. Transitions to `STOPPED`. Use {@link stop} to halt without
+   * clearing the pattern.
    */
   reset() {
     this.#setGameState(GameOfLife.GameState.STOPPED);
@@ -225,17 +252,72 @@ class GameOfLife {
     clearInterval(this.timer);
     this.timer = null;
     this.#clearState();
+    this.#text = null;
     this.#syncCells();
   }
 
   /**
    * Replaces the current state with a uniformly random alive/dead pattern
-   * (~50 % live cells). Clears the cycle history so the new pattern is not
-   * matched against the previous game.
+   * (~50 % live cells). Clears the cycle history and the stored text seed so
+   * the next {@link start} randomizes again.
    */
   randomize() {
     this.state = this.state.map((row) => row.map(() => Math.random() > 0.5));
     this.history = [];
+    this.#text = null;
+  }
+
+  /**
+   * Sets the state so the cells spell out `text` using {@link FONT_3X5},
+   * centered on the board. Input is lowercased before lookup; unsupported
+   * characters are skipped silently. Falls back to {@link randomize} when the
+   * rendered text does not fit the grid. Updates the DOM via `#syncCells` so
+   * the result is visible immediately.
+   *
+   * Stores `text` as the preferred seed for the next {@link start} (cleared by
+   * {@link randomize} or {@link reset}).
+   * @param {string} [text="qp-game-of-life"]
+   *
+   * @example
+   *   const game = document.querySelector("qp-game-of-life");
+   *   game.showText("hello world");
+   *   game.showText("Conway 2026");
+   *   game.showText("123-456");
+   */
+  showText(text = "qp-game-of-life") {
+    const normalized = text.toLowerCase();
+    const charSpacing = 1;
+    const totalWidth = normalized.length * (FONT_3X5_CHAR_WIDTH + charSpacing) - charSpacing;
+
+    if (totalWidth > this.gameSize.x || FONT_3X5_CHAR_HEIGHT > this.gameSize.y) {
+      this.randomize();
+      this.#syncCells();
+      return;
+    }
+
+    this.#clearState();
+
+    const offsetX = Math.floor((this.gameSize.x - totalWidth) / 2);
+    const offsetY = Math.floor((this.gameSize.y - FONT_3X5_CHAR_HEIGHT) / 2);
+
+    for (let charIdx = 0; charIdx < normalized.length; charIdx++) {
+      const bitmap = FONT_3X5[normalized[charIdx]];
+
+      if (!bitmap) continue;
+
+      const charX = offsetX + charIdx * (FONT_3X5_CHAR_WIDTH + charSpacing);
+
+      for (let y = 0; y < FONT_3X5_CHAR_HEIGHT; y++) {
+        for (let x = 0; x < FONT_3X5_CHAR_WIDTH; x++) {
+          if (bitmap[y][x] === "#") {
+            this.state[offsetY + y][charX + x] = true;
+          }
+        }
+      }
+    }
+
+    this.#text = text;
+    this.#syncCells();
   }
 
   /**
