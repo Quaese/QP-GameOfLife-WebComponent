@@ -30,13 +30,15 @@ const styles = `
 
   .qp-cell {
     background-color: #ccc;
+    // background-color: var(--ivory-patina);
     border: 1px solid #efefef;
     width: var(--cell-size);
     height: var(--cell-size);
   }
 
   .qp-cell.is-alive {
-    background-color: #000;
+    background-color: #666;
+    // background-color: var(--vintage-stitch-full);
   }
 
   .qp-overlay {

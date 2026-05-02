@@ -9,6 +9,8 @@
  * @readonly
  */
 const WORDS = Object.freeze([
+  "qp-game-of-life",
+  "www.quaese.de",
   "conway",
   "blinker",
   "glider",
