@@ -6,19 +6,23 @@ Conway's rules each tick, and detects cycles (still-life and oscillators) to
 end the game. A 3×5 bitmap font lets you seed the board with arbitrary text;
 the painted text dissolves into Conway's chaos as the game ticks.
 
+**[Live Demo](https://quaese.github.io/QP-GameOfLife-WebComponent/)**
+
 ## Table of Contents
 
-- [Usage](#usage)
-- [Attributes](#attributes)
-- [Game States](#game-states)
-- [Public Methods](#public-methods)
-- [Events](#events)
-- [Game Flow](#game-flow)
-- [Cycle Detection](#cycle-detection)
-- [Bitmap Font](#bitmap-font)
-- [UI Sections](#ui-sections)
-- [Lifecycle](#lifecycle)
-- [File Structure](#file-structure)
+- [`<qp-game-of-life>` — Conway's Game of Life](#qp-game-of-life--conways-game-of-life)
+  - [Table of Contents](#table-of-contents)
+  - [Usage](#usage)
+  - [Attributes](#attributes)
+  - [Game States](#game-states)
+  - [Public Methods](#public-methods)
+  - [Events](#events)
+  - [Game Flow](#game-flow)
+  - [Cycle Detection](#cycle-detection)
+  - [Bitmap Font](#bitmap-font)
+  - [UI Sections](#ui-sections)
+  - [Lifecycle](#lifecycle)
+  - [File Structure](#file-structure)
 
 ## Usage
 
@@ -59,26 +63,26 @@ lifecycle method) explicitly.
 The current state is exposed as a read-only `gameState` property and emitted
 on every transition via the `qp-game-of-life:statechange` event.
 
-| State | Description |
-| --- | --- |
-| `init` | Initial state after component load, shows the logo seed |
-| `started` | Simulation timer is running |
-| `paused` | Timer halted, resumable via `continue()` |
-| `stopped` | Simulation halted (board may still show last pattern) |
+| State      | Description                                                 |
+| ---------- | ----------------------------------------------------------- |
+| `init`     | Initial state after component load, shows the logo seed     |
+| `started`  | Simulation timer is running                                 |
+| `paused`   | Timer halted, resumable via `continue()`                    |
+| `stopped`  | Simulation halted (board may still show last pattern)       |
 | `gameover` | Cycle detected (still-life or oscillator); overlay is shown |
 
 ## Public Methods
 
-| Method | Effect |
-| --- | --- |
-| `start()` | Starts the loop. From `init` keeps the existing pattern (the logo) as seed; otherwise re-paints the stored text seed if any, else randomizes. |
-| `pause()` | Halts the timer. Transitions to `paused`. |
-| `continue()` | Resumes a paused simulation. No-op outside of `paused`. |
-| `stop()` | Halts the timer; the current pattern stays visible. Transitions to `stopped`. |
-| `reset()` | Halts, clears the board, and clears the stored text seed. Transitions to `stopped`. |
-| `randomize()` | Replaces state with a uniformly random pattern. Clears the stored text seed. |
+| Method            | Effect                                                                                                                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start()`         | Starts the loop. From `init` keeps the existing pattern (the logo) as seed; otherwise re-paints the stored text seed if any, else randomizes.                                                 |
+| `pause()`         | Halts the timer. Transitions to `paused`.                                                                                                                                                     |
+| `continue()`      | Resumes a paused simulation. No-op outside of `paused`.                                                                                                                                       |
+| `stop()`          | Halts the timer; the current pattern stays visible. Transitions to `stopped`.                                                                                                                 |
+| `reset()`         | Halts, clears the board, and clears the stored text seed. Transitions to `stopped`.                                                                                                           |
+| `randomize()`     | Replaces state with a uniformly random pattern. Clears the stored text seed.                                                                                                                  |
 | `showText(text?)` | Paints `text` (default `"qp-game-of-life"`) onto the board using the 3×5 font. Stores the text as preferred seed for the next `start()`. Falls back to `randomize()` if the text doesn't fit. |
-| `randomText()` | Picks a random word from the imported `WORDS` pool and calls `showText()`. |
+| `randomText()`    | Picks a random word from the imported `WORDS` pool and calls `showText()`.                                                                                                                    |
 
 The text seed (`#text`) is the **preferred seed for the next `start()`**:
 
