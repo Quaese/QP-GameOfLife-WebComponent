@@ -112,9 +112,13 @@ const styles = `
  * `<qp-game-of-life>` Custom Element. Wraps {@link GameOfLife} in a shadow DOM
  * and renders a game-over overlay with Restart/Close actions.
  *
- * The element forwards lifecycle commands (`start`, `pause`, `continue`,
- * `stop`, `reset`, `randomize`) to the underlying simulation and exposes the
- * current `gameState` as a read-only property.
+ * Public API forwarded to the simulation:
+ * - Lifecycle: {@link GameOfLifeElement#start}, {@link GameOfLifeElement#pause},
+ *   {@link GameOfLifeElement#continue}, {@link GameOfLifeElement#stop},
+ *   {@link GameOfLifeElement#reset}
+ * - Seed setters: {@link GameOfLifeElement#randomize},
+ *   {@link GameOfLifeElement#showText}, {@link GameOfLifeElement#randomText}
+ * - Read-only: {@link GameOfLifeElement#gameState}
  *
  * @element qp-game-of-life
  *
